@@ -9,7 +9,7 @@ AGE_OP=${AGE_OP:-$(which age-op)}
 
 # vault for testing - this must be a unique vault name used only for testing
 # the cleanup at the end of this script deletes all items in this vault
-TEST_VAULT=testing
+TEST_VAULT=ageop_testing_scratch_vault
 
 VAULT_ITEM1=$(head -c 8 /dev/random | base64 | tr -d '/+=')
 VAULT_KEY1=op://$TEST_VAULT/$VAULT_ITEM1
