@@ -1,10 +1,10 @@
 # Simple CLI encryption without the footguns
 
-This `age-op` bash script combines the awesome [age](https://github.com/FiloSottile/age) cli for encryption and decryption, with 1password for secure key storage.
-It can also create age-compatible ed25519 keys and store them in 1password vault. 
+This [`age-op`](./age-op) bash script combines the awesome [age](https://github.com/FiloSottile/age) cli for encryption and decryption, with 1password for secure key storage.
+It can also create age-compatible ed25519 keys and store them in a 1password vault. 
 Through the magic of 1password-host integration, it works with the various conveniences for unlocking the vault: biometrics, touch-id, apple watch (macos), yubi key, etc.
 
-The optional scripts in [op-connect](./op-connect) make it easier to use `age-op` on remote server (over ssh) that may not have a 1Password app installed.
+The optional scripts in [op-connect](./op-connect) make it easier to use `age-op` on remote servers (over ssh) that may not have a 1Password app installed.
 
 Works in streaming modes (encrypting/decrypting from stdin or to stdout).
 
@@ -92,19 +92,30 @@ If it doesn't connect, or if a 1Password is not installed, you can authenticate 
 
 ## Using on remote servers
 
-You can use `age-op` on a remote server, for example to make encrypted backups and send them to s3. The remote server needs to have the `op` cli and `age-op` installed.
+You can use `age-op` on a remote server, or CI pipeline. 
+The remote server needs to have the `op` cli and `age-op` installed. The two most common ways to authorize that machine are with a service account token, or with credentials to access a Connect Server.
 
-Case 1: With 1Password Connect Server
+### Service Account
 
-- see [op-connect](./op-connect) for instructions
+A [service account](https://developer.1password.com/docs/service-accounts) is easy to create on the 1Password web interface,
+and requires only one environment variable, `OP_SERVICE_ACCOUNT_TOKEN`. The token limits access to specific vaults, 
+and has an expiration date. This is useful for automated CI, or cloud services like AWS or K8s where you can inject environment variables.
+  
+If you want to pass the token during an interactive ssh session, you can do one of the following:
 
-
-Case 2: With a [service account](https://developer.1password.com/docs/service-accounts) and service token
-
-- The remote process must have `OP_SERVICE_ACCOUNT_TOKEN` set (you can create this manually in the 1password web interface). If you don't want to store this on the remote server, you can set it in a local environment,
-  do one of the following:
-  - when connecting to the remote server, use `ssh -o SendEnv=OP_SERVICE_ACCOUNT_TOKEN ...`
-  - add ```SendEnv OP_SERVICE_ACCOUNT_TOKEN``` or ```SetEnv OP_SERVICE_ACCOUNT_TOKEN=....``` to the `.ssh/config` configuration for that host. 
+  - when connecting to the remote server, use `ssh -o SendEnv=OP_SERVICE_ACCOUNT_TOKEN ...`.
+  - Or, add ```SendEnv OP_SERVICE_ACCOUNT_TOKEN``` or ```SetEnv OP_SERVICE_ACCOUNT_TOKEN=....``` (depending on whether you want to pass the variable from your current environment, or store it in the config file) to the `.ssh/config` configuration for that host. 
 
 You may need to add `AcceptEnv OP_SERVICE_ACCOUNT_TOKEN` to the `/etc/ssh/sshd_config` on the remote server.
  
+### 1Password Connect Server
+
+This may be more flexible than the service account approach, but has the overhead of needing to run a server (docker-compose file provided).
+I use this in cases when I ssh from a primary workstation (or laptop) that has 1password installed,
+and I want to use different credentials and encryption keys for different remote hosts. For the duration of the ssh session,
+a local connect server handles callbacks so remote apps can get encryption keys. The credentials are short-lived
+(only as long as the ssh session), fine-tuned to the target, and no keys or tokens are left behind on the remote servers.
+ 
+See [op-connect](./op-connect) for instructions and scripts.
+
+
