@@ -119,3 +119,31 @@ a local connect server handles callbacks so remote apps can get encryption keys.
 See [op-connect](./op-connect) for instructions and scripts.
 
 
+## Alternatives
+
+Some of the popular alternatives to `age` I considered.
+
+- openssl cli. Often recommended in blogs and SO, but [has significant flaws and footguns](https://security.stackexchange.com/questions/182277/is-openssl-aes-256-cbc-encryption-safe-for-offsite-backup)
+
+- gnupg (gpg) is [less foolproof](https://github.com/FiloSottile/age/discussions/432)
+
+- 7zip (7z) uses aes-256, but [doesn't retain unix owners and permissions](https://www.redhat.com/sysadmin/encrypting-decrypting-7zip)
+
+- aescrypt - hard to review since the [git repo is out of date](https://github.com/paulej/AESCrypt), even though that's still linked from aescrypt dot com.
+
+- aws encryption cli - requires AWS KMS, and I wanted 1Password
+
+- [veracrypt](https://github.com/veracrypt/VeraCrypt), [rclone](https://github.com/rclone/rclone), [restic](https://github.com/restic/restic) 
+  All three of these are well-regarded, and I used them for other use cases, but they are too heavywight (IMO) for a simple cli for encrypting stdin or a file at a time.
+
+- Writing yet-another tool. Not worth writing another binary.
+
+`age` is broadly used, was written by a smart and thoughtful author, and stands on the shoulders of chacha20-poly1305 (RFC7539), x25519 (RFC 7748), HKDF-SHA-256 (RFC 5869).
+The short `age-op` script is easy to review, and doesn't introduce any new encryption algorithms or do anything fancy. It's a small amount
+of code necessary to connect it to 1password.
+All files created or read by `age-op` are 100% compatible with `age` and `rage`, so there is no lock-in or risk of incompatibility.
+
+## Future
+
+There may be [reasons](https://github.com/stevelr/age-op/issues/1) for building this as a plugin, or for taking advantage of future plugins. 
+
