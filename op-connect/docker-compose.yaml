@@ -1,0 +1,21 @@
+version: "3.4"
+
+services:
+  op-connect-api:
+    image: 1password/connect-api:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - "./1password-credentials.json:/home/opuser/.op/1password-credentials.json"
+      - "op-cred-cache:/home/opuser/.op/data"
+  op-connect-sync:
+    image: 1password/connect-sync:latest
+    ports:
+      - "8081:8080"
+    volumes:
+      - "./1password-credentials.json:/home/opuser/.op/1password-credentials.json"
+      - "op-cred-cache:/home/opuser/.op/data"
+
+volumes:
+  # credentials cache - does not contain unencrypted secrets
+  op-cred-cache:

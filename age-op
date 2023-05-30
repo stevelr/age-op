@@ -1,0 +1,206 @@
+#!/usr/bin/env bash
+
+# Age encryption using secrets in 1password vault
+# Date: 2023-05-29
+# Version: 0.2
+#
+# Run `age-op -h` for help and examples
+#
+# For information about age, see https://github.com/FiloSottile/age
+# Tested on mac and linux. Tested with age and rage (rust-rage)
+
+
+# Select private folder for temporary secrets. can be overridden with `-t` flag
+# The defaults for linux and macos are readable by owner only
+# Returns: temp folder path with no trailing '/'
+private_tmp() {
+  if [ -d /run/user/$(id -u) ]; then
+    echo /run/user/$(id -u)      # linux. folder owned by user with mode 700
+  elif [ -d "$TMPDIR" ]; then
+    echo "$(echo $TMPDIR | sed 's./$..')"  # macos. owned by user with mode 700. remove trailing slash
+  else
+    echo "$PWD"
+  fi
+}
+tmppath=$(private_tmp)
+
+
+# Dislpay help message and quit
+# param: ERROR_MESSAGE
+# If ERROR_MESSAGE is not empty, exits 1, otherwise exits 0
+_help() {
+  [ -n "$1" ] && echo "Error: $1\n"
+  local ds="\$"
+  local prog=$(basename $0)
+  cat <<_HELP
+
+age encryption with secret keys in 1password vault
+
+Examples:
+
+   Encrypt file:
+       $prog -e -k KEY_PATH [ -o OUTPUT ] [ -t TMPDIR ] [ FILE ]
+           encrypt a single input file FILE.
+           If FILE is '-' or not specified, stdin is encrypted
+           If OUTPUT is '-' or not specified, the output is sent to stdout
+
+       To encrypt one or more files or folders to a tar file, use
+           tar czf - FILE_OR_DIR FILE_OR_DIR ... | $prog -e -k KEY_PATH -o foo.tar.gz.age
+
+   Decrypt file:
+       $prog -d -k KEY_PATH [ -o OUTPUT ] [-t TMPDIR ] [ FILE ]
+           decrypt a file, or stdin
+           If FILE is '-' or not specified, stdin is decrypted
+           If OUTPUT is '-' or not specified, the output is sent to stdout
+
+       To decrypt a tar file,
+           $prog -d -k KEY_PATH foo.tar.gz.age | tar xzf -
+
+   Generate an age ed25519 key and store it in the 1password vault. The type of the new item will be "Password"
+       $prog -n -k KEY_PATH
+
+KEY_PATH should have one of the following formats:
+    - 'op://vault/title', 'op://vault/title/field', or 'op://vault/title/section/field'
+    In the first case, the field name defaults to 'password'
+
+TMPDIR is the temporary folder where key will be briefly written and quickly removed
+    Default is '$tmppath'
+
+1Password configuration:
+    For the 1Password cli ('op') to authenticate with a vault, you can do one of the following:
+     - For use with a service account, set the environment variable OP_SERVICE_ACCOUNT_TOKEN
+     - For use with a 1Password Connect Server, set OP_CONNECT_HOST and OP_CONNECT_TOKEN
+     - sign into a local app with "eval ${ds}(op signin)"
+
+_HELP
+  [ -n "$1" ] && exit 1 || exit 0
+}
+
+# Store key in unique temp file, with access limited to current user
+# params: TMPDIR KEY
+# returns: path to temp file
+store_secret() {
+  secret=$(mktemp "$1/age-secret.XXXXXX")
+  chmod 600 "$secret"
+  cat >"$secret" <<_EKEY
+$2
+_EKEY
+  echo "$secret"
+}
+
+# Create a new key
+# params: KEYPATH
+new_key() {
+  local keypath="$1"
+  local key field out pw title vault field 
+  
+  ##
+  ## Create new key
+  ##
+  vault=$(echo $keypath | sed -E 's|op://([^/]+)\/([^/]+)\/(.*)|\1|')
+  title=$(echo $keypath | sed -E 's|op://([^/]+)\/([^/]+)\/(.*)|\2|')
+  field=$(echo $keypath | sed -E 's|op://([^/]+)\/([^/]+)\/(.*)|\3|')
+
+  # check if the key path exists so we don't overwrite it.
+  # The successs case (key is unique) generates an error, so temporarily disable '+e'
+  set +e
+  key=$(op item get "$title" "--vault=$vault" 2>/dev/null)
+  [ $? -eq 0 ] && _help "Key vault:$vault  title:$title already exists - will not overwrite"
+  set -e
+  pw="$(age-keygen)"
+  out=$(op item create --category=password --title="$title" --vault="$vault" "$field=$pw")
+  echo "Created vault:$vault  title:$title"
+}
+
+cmd=""
+input=""
+output=""
+keypath=""
+stdin=0
+_err=""
+# putting this in a variable makes it work with zsh
+help_regex="^\-h|^--help|^help$"
+AGE=${AGE:-$(which age)}
+
+#[ ! -x "$AGE" ] && echo "No 'age' found. Install it, or set AGE to its path" && exit 1
+[ ! "$(which op)"  ] && echo "Error: misssing required program 'op' (1password cli)"  && exit 1
+[[ $1 =~ $help_regex ]] && _help
+
+while getopts ':hnedo:k:t:' OPTION; do
+  case $OPTION in
+    h) _help
+        ;;
+    n) [ -n "$cmd" ] && _help "Only one of -e, -d, or -n may be used"
+        cmd="new"
+        ;;
+    e) [ -n "$cmd" ] && _help "Only one of -e, -d, or -n may be used"
+        cmd="encrypt"
+        ;;
+    d) [ -n "$cmd" ] && _help "Only one of -e, -d, or -n may be used"
+        cmd="decrypt"
+        ;;
+    o) output=$OPTARG
+        ;;
+    k) keypath=$OPTARG
+        if [[ ! $keypath =~ ^op://[^/]+/[^/]+/.+$ ]]; then
+          # if path has only two segments (vault & title), append field "password"
+          # since the 'new' function creates items of type Password
+          if [[ $keypath =~ ^op://[^/]+/[^/]+$ ]]; then
+            keypath="$keypath/password"
+          else
+            _help "Invalid key path '$keypath'"
+          fi
+        fi
+        ;;
+    t) tmppath=$OPTARG
+        [ ! -d "$tmppath" ] && _help "Invalid tmp folder: '$tmppath' does not exist"
+        ;;
+    ?) _help "" ;;
+  esac
+done
+shift "$(($OPTIND -1))"
+
+[ -z "$cmd" ] && _help "One of -e, -d, or -n must be used"
+[ -z "$keypath" ]  && _help "keypath is required. Should be of the form op://vault/title[/field]"
+
+if [ "$cmd" = "new" ]; then
+  new_key $keypath
+else
+
+  ##
+  ## Encrypt or Decrypt
+  ##
+  if [ -z "$1" ] || [ "$1" = "-" ]; then
+    stdin=1
+  else
+    input="$1"
+    [ ! -r "$input" ] && _help "Missing or unreadable input file '$input'"
+    # don't re-encrypt file ending in .age
+    [ "$cmd" = "encrypt" ] && [[ $input =~ \.age$ ]] && _help "Input file may not end in '.age'"
+  fi
+  if [ -z "$output" ] || [ "$output" = "-" ]; then
+    output=/dev/stdout
+  fi
+
+  key=$(op read "$keypath")
+  if [ $? -ne 0 ] || [ -z "$key" ]; then
+    _help "Invalid keypath '$keypath'"
+  fi
+  secret=$(store_secret "$tmppath" "$key")
+
+  ## try
+  {(
+    set +e # don't quit on error here - we want to make sure secret is deleted
+    if [ $stdin -eq 1 ]; then
+      $AGE --${cmd} -i "$secret" >"$output"
+    else
+      $AGE --${cmd} -i "$secret" <"$input"  >"$output"
+    fi
+  )}
+  ## catch
+  {
+    rm -f "$secret"
+  }
+fi
+
+unset  _err cmd input key keypath output secret stdin tmppath
