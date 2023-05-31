@@ -1,48 +1,73 @@
 # Encryption on remote server
 
 The 1Password [Connect Server](https://developer.1password.com/docs/connect) 
-makes it easy to use `op` and [`age-op`](https://github.com/stevelr/age-op) 
-on a remote server. The scripts here make it somewhat easier to use.
+makes it easy to use [`age-op`](https://github.com/stevelr/age-op) 
+on a remote server - even if the remote server doesn't have a 1Password desktop app installed.
 
-Run `start-connect-server -t TOKEN_NAME` and follow the instructions.
-TOKEN_NAME is any name for this purpose, such as "prod backup key".
+Here are some scripts and instructions for using a remote server over ssh.
 
-The [`start-connect-server`](./start-connect-server) script starts docker containers with the 1p connect server,
-and generates a token-\*.env script. (the actual file name is printed by start-connect-server).
+## Setup
 
-After sourcing token-*.env, your bash or zsh environment contains these variables:
-    `OP_CONNECT_HOST`
-    `OP_CONNECT_TOKEN`
-and these aliases:
-    `ssh-with-token`
-    `stop-server`
+On the remote host, install `age-op`, `age`, and `op`. 
 
-The env variables are used by the 1Password cli `op` and [`age-op`](https://github.com/stevelr/age-op) (which uses `op`).
-The alias `ssh-with-token` passes these vars to a remote shell,
-so you can have temporary access to a 1Password vault even if the remote server
-is headless doesn't have 1password app installed. (the `op` cli is needed, though)
-The protocol for connecting back uses http:, not https:. The network is assumed to be trusted.
-
-A remote ssh server needs some configuration to make this work:
-1. install the `op` cli program, and install [`age-op`](https://github.com/stecelr/age-op) if needed
-2. Add the following line to the remote server's /etc/ssh/sshd_config:
-
+Add the following line to the remote server's `/etc/ssh/sshd_config`
+ 
 ```
 AcceptEnv OP_CONNECT_HOST OP_CONNECT_TOKEN
 ```
-
 and reload the sshd server's config with: `sudo systemctl -s HUP kill sshd`
 
 
-When you no longer need the environment and server, type
+## Run
 
+Pick a name for the token (`TOKEN_NAME`) and start the connect server on your local machine.
+
+```shell
+./start-connect-server.sh -t TOKEN_NAME
 ```
+
+The above script also generates an environment script using the provided token name. Source it
+```shell
+source token-TOKEN_NAME.env
+```
+
+That script adds two variables to your environment, `OP_CONNECT_HOST` and `OP_CONNECT_TOKEN`, and defines two aliases,
+`ssh-with-token` and `stop-server`.
+
+Connect to the server using `ssh-with-token` instead of `ssh`. That alias forwards the two `OP_*` environment variables to the remote server.
+```
+ssh-with-token remote
+```
+
+Then, run `age-op` as needed
+```
+# for example, take database backup, encrypt, and save on S3
+FNAME=db-backup-$(date '+%Y%m%d-%H%M%S').tar.gz.age
+pg_dump | age-op -e -k op://vault/DbBackup -o $FNAME
+aws s3 cp $FNAME s3://mybucket/$FNAME
+```
+
+After you exit the ssh session, use this command to stop the connect server and delete the credentials.
+
+```shell
 stop-server
 ```
 
-This will stop the server and delete the temporary credentials.
 
-This docker-compose.yml file creates a docker volume `op-connect_op-cred-cache`
-containing an encrypted cache. It's safe to delete between runs,
+## Other notes
+
+### Enabling TLS
+
+The simple configuration described above assumes the network is trusted, and `op` 
+uses unencrypted http protocol to call back to the connect server to get the key. For tighter
+network security, you can [configure the Connect Server](https://developer.1password.com/docs/connect/connect-server-configuration)
+to use TLS, install TLS keys, and use an `https:` scheme in `OP_CONNECT_HOST`.
+
+
+### Encrypted Cache
+
+
+This docker-compose.yml file uses a docker volume
+to store an encrypted cache. It's safe to delete between runs,
 but keeping it around may improve startup time depending on the size of vaults used.
 

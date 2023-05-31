@@ -9,6 +9,11 @@
 # For information about age, see https://github.com/FiloSottile/age
 # Tested on mac and linux. Tested with age and rage (rust-rage)
 
+# check dependencies
+# Change to 'rage' if you prefer
+AGE=${AGE:-$(which age)}
+OP=${OP:-op}
+
 
 # Select private folder for temporary secrets. can be overridden with `-t` flag
 # The defaults for linux and macos are readable by owner only
@@ -72,6 +77,10 @@ TMPDIR is the temporary folder where key will be briefly written and quickly rem
      - For use with a 1Password Connect Server, set OP_CONNECT_HOST and OP_CONNECT_TOKEN
      - sign into a local app with "eval ${ds}(op signin)"
 
+Dependencies: Installation instructions and documentation:
+  age: https://age-encryption.org
+  op (1Password cli): https://developer.1password.com/docs/cli/get-started
+
 _HELP
   [ -n "$1" ] && exit 1 || exit 0
 }
@@ -92,8 +101,8 @@ _EKEY
 # params: KEYPATH
 new_key() {
   local keypath="$1"
-  local key field out pw title vault field 
-  
+  local key field out pw title vault field
+
   ##
   ## Create new key
   ##
@@ -104,11 +113,11 @@ new_key() {
   # check if the key path exists so we don't overwrite it.
   # The successs case (key is unique) generates an error, so temporarily disable '+e'
   set +e
-  key=$(op item get "$title" "--vault=$vault" 2>/dev/null)
+  key=$($OP item get "$title" "--vault=$vault" 2>/dev/null)
   [ $? -eq 0 ] && _help "Key vault:$vault  title:$title already exists - will not overwrite"
   set -e
   pw="$(age-keygen)"
-  out=$(op item create --category=password --title="$title" --vault="$vault" "$field=$pw")
+  out=$($OP item create --category=password --title="$title" --vault="$vault" "$field=$pw")
   echo "Created vault:$vault  title:$title"
 }
 
@@ -120,10 +129,10 @@ stdin=0
 _err=""
 # putting this in a variable makes it work with zsh
 help_regex="^\-h|^--help|^help$"
-AGE=${AGE:-$(which age)}
 
-#[ ! -x "$AGE" ] && echo "No 'age' found. Install it, or set AGE to its path" && exit 1
-[ ! "$(which op)"  ] && echo "Error: misssing required program 'op' (1password cli)"  && exit 1
+[ ! $($AGE --help 2>&1 |grep Usage) ] && _help "Missing 'age' dependency. Please see installation url below."
+# 1password cli
+[ ! $($OP --version) ] && _help "Missing 'op' dependency. Please see installation url below."
 [[ $1 =~ $help_regex ]] && _help
 
 while getopts ':hnedo:k:t:' OPTION; do
@@ -182,7 +191,7 @@ else
     output=/dev/stdout
   fi
 
-  key=$(op read "$keypath")
+  key=$($OP read "$keypath")
   if [ $? -ne 0 ] || [ -z "$key" ]; then
     _help "Invalid keypath '$keypath'"
   fi
