@@ -13,7 +13,7 @@
 # Change to 'rage' if you prefer
 AGE=${AGE:-$(which age)}
 OP=${OP:-op}
-
+prog=$(basename $0)
 
 # Select private folder for temporary secrets. can be overridden with `-t` flag
 # The defaults for linux and macos are readable by owner only
@@ -36,7 +36,6 @@ tmppath=$(private_tmp)
 _help() {
   [ -n "$1" ] && echo "Error: $1\n"
   local ds="\$"
-  local prog=$(basename $0)
   cat <<_HELP
 
 age encryption with secret keys in 1password vault
@@ -121,76 +120,59 @@ new_key() {
   echo "Created vault:$vault  title:$title"
 }
 
-cmd=""
-input=""
-output=""
 keypath=""
-stdin=0
-_err=""
-# putting this in a variable makes it work with zsh
-help_regex="^\-h|^--help|^help$"
+newkey=0
+tmppath=$(private_tmp)
+passthruargs=()
 
 [ ! $($AGE --help 2>&1 |grep Usage) ] && _help "Missing 'age' dependency. Please see installation url below."
 # 1password cli
 [ ! $($OP --version) ] && _help "Missing 'op' dependency. Please see installation url below."
-[[ $1 =~ $help_regex ]] && _help
 
-while getopts ':hnedo:k:t:' OPTION; do
-  case $OPTION in
-    h) _help
-        ;;
-    n) [ -n "$cmd" ] && _help "Only one of -e, -d, or -n may be used"
-        cmd="new"
-        ;;
-    e) [ -n "$cmd" ] && _help "Only one of -e, -d, or -n may be used"
-        cmd="encrypt"
-        ;;
-    d) [ -n "$cmd" ] && _help "Only one of -e, -d, or -n may be used"
-        cmd="decrypt"
-        ;;
-    o) output=$OPTARG
-        ;;
-    k) keypath=$OPTARG
-        if [[ ! $keypath =~ ^op://[^/]+/[^/]+/.+$ ]]; then
-          # if path has only two segments (vault & title), append field "password"
-          # since the 'new' function creates items of type Password
-          if [[ $keypath =~ ^op://[^/]+/[^/]+$ ]]; then
-            keypath="$keypath/password"
-          else
-            _help "Invalid key path '$keypath'"
-          fi
+# no need to support getopts-style parameters (`-abc` instead of `-a -b -c`)
+# since age itself doesn't (this greatly simplifies parameter parsing!)
+while [[ $# -gt 0 ]]; do
+  param="$1"
+  shift
+  case $param in
+    -h | --help | help)
+      _help
+      ;;
+    -n | --new)
+      newkey=1
+      ;;
+    -k | --keypath)
+      keypath=$1
+      shift
+      if [[ ! $keypath =~ ^op://[^/]+/[^/]+/.+$ ]]; then
+        # if path has only two segments (vault & title), append field "password"
+        # since the 'new' function creates items of type Password
+        if [[ $keypath =~ ^op://[^/]+/[^/]+$ ]]; then
+          keypath="$keypath/password"
+        else
+          _help "Invalid key path '$keypath'"
         fi
-        ;;
-    t) tmppath=$OPTARG
-        [ ! -d "$tmppath" ] && _help "Invalid tmp folder: '$tmppath' does not exist"
-        ;;
-    ?) _help "" ;;
+      fi
+      ;;
+    -t | --tmppath)
+      tmppath=$1
+      shift
+      [ ! -d "$tmppath" ] && _help "Invalid tmp folder: '$tmppath' does not exist"
+      ;;
+    *)
+      passthruargs+=("$param")
+      ;;
   esac
 done
-shift "$(($OPTIND -1))"
 
-[ -z "$cmd" ] && _help "One of -e, -d, or -n must be used"
+# TODO: couldn't we use this new key for encrypt operations?
+[ $newkey -eq 1 ] && [ -n "$tmppath$passthruargs" ] \
+  && _help "-n/--new can only be used with -k/--keypath"
 [ -z "$keypath" ]  && _help "keypath is required. Should be of the form op://vault/title[/field]"
 
-if [ "$cmd" = "new" ]; then
+if [ $newkey -eq 1 ]; then
   new_key $keypath
 else
-
-  ##
-  ## Encrypt or Decrypt
-  ##
-  if [ -z "$1" ] || [ "$1" = "-" ]; then
-    stdin=1
-  else
-    input="$1"
-    [ ! -r "$input" ] && _help "Missing or unreadable input file '$input'"
-    # don't re-encrypt file ending in .age
-    [ "$cmd" = "encrypt" ] && [[ $input =~ \.age$ ]] && _help "Input file may not end in '.age'"
-  fi
-  if [ -z "$output" ] || [ "$output" = "-" ]; then
-    output=/dev/stdout
-  fi
-
   key=$($OP read "$keypath")
   if [ $? -ne 0 ] || [ -z "$key" ]; then
     _help "Invalid keypath '$keypath'"
@@ -200,10 +182,11 @@ else
   ## try
   {(
     set +e # don't quit on error here - we want to make sure secret is deleted
-    if [ $stdin -eq 1 ]; then
-      $AGE --${cmd} -i "$secret" >"$output"
+    # if stdin is a terminal, then don't connect it to age
+    if [ -t 0 ]; then
+      $AGE -i "$secret" "${passthruargs[@]}" >&1
     else
-      $AGE --${cmd} -i "$secret" <"$input"  >"$output"
+      $AGE -i "$secret" "${passthruargs[@]}" <&0 >&1
     fi
   )}
   ## catch
