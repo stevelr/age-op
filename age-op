@@ -30,7 +30,7 @@ private_tmp() {
 tmppath=$(private_tmp)
 
 
-# Dislpay help message and quit
+# Display help message and quit
 # param: ERROR_MESSAGE
 # If ERROR_MESSAGE is not empty, exits 1, otherwise exits 0
 _help() {
@@ -111,7 +111,7 @@ new_key() {
   field=$(echo $keypath | sed -E 's|op://([^/]+)\/([^/]+)\/(.*)|\3|')
 
   # check if the key path exists so we don't overwrite it.
-  # The successs case (key is unique) generates an error, so temporarily disable '+e'
+  # The success case (key is unique) generates an error, so temporarily disable '+e'
   set +e
   key=$($OP item get "$title" "--vault=$vault" 2>/dev/null)
   [ $? -eq 0 ] && _help "Key vault:$vault  title:$title already exists - will not overwrite"
