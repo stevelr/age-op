@@ -21,8 +21,8 @@ VAULT_KEY2=op://$TEST_VAULT/$VAULT_ITEM2
 
 # For recipient-based tests - SSH key
 VAULT_SSH_ITEM=$(head -c 8 /dev/random | base64 | tr -d '/+=')
-VAULT_SSH_PUB_KEY=op://$TEST_VAULT/$VAULT_SSH_ITEM/public
-VAULT_SSH_PRIV_KEY=op://$TEST_VAULT/$VAULT_SSH_ITEM/private
+VAULT_SSH_PUB_KEY="op://$TEST_VAULT/$VAULT_SSH_ITEM/public key"
+VAULT_SSH_PRIV_KEY="op://$TEST_VAULT/$VAULT_SSH_ITEM/private key"
 
 # Create temporary directory for test files
 TEST_DIR=$(mktemp -d -t age-test-files.XXXXXX)
@@ -97,17 +97,18 @@ key1_path=$TEST_DIR/key1
 age-keygen -o "$key1_path" > "$TEST_DIR/key1_gen_out" 2>&1
 check $? "age key generation"
 
-# Generate SSH key pair for recipient tests
-ssh-keygen -t ed25519 -f "$TEST_DIR/ssh_key" -N "" >/dev/null 2>&1
-check $? "generate SSH key pair for recipient test"
+# Generate SSH key directly in 1Password for recipient tests
+op item create --category="SSH Key" --title="$VAULT_SSH_ITEM" --vault="$TEST_VAULT" --ssh-generate-key="ed25519" >/dev/null
+check $? "generate SSH key in 1Password"
 
-# Store SSH public and private keys in 1Password
-ssh_pub=$(cat "$TEST_DIR/ssh_key.pub")
-ssh_priv=$(cat "$TEST_DIR/ssh_key")
+# Extract the public key for test verification with age
+op read "$VAULT_SSH_PUB_KEY" > "$TEST_DIR/ssh_key.pub"
+check $? "extract public key for verification"
 
-# Create item in 1Password for SSH keys
-op item create --category="Login" --title="$VAULT_SSH_ITEM" --vault="$TEST_VAULT" "public=$ssh_pub" "private=$ssh_priv" >/dev/null
-check $? "store SSH keys in 1Password"
+# Extract the private key to a temporary file for verification tests
+op read "$VAULT_SSH_PRIV_KEY" > "$TEST_DIR/ssh_key"
+chmod 600 "$TEST_DIR/ssh_key"
+check $? "extract private key for verification"
 
 # SECTION 1: VERIFY AGE WORKS CORRECTLY
 print_header "SECTION 1: BASIC AGE FUNCTIONALITY"
