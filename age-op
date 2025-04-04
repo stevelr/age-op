@@ -273,7 +273,7 @@ else
     fi
   else
     # For encryption with private key or decryption, store key in temporary file
-  secret=$(store_secret "$tmppath" "$key")
+    secret=$(store_secret "$tmppath" "$key")
 
     if [ $stdin -eq 1 ]; then
       $AGE --${cmd} -i "$secret" $age_opts >"$output"
@@ -297,7 +297,7 @@ else
     # Cleanup is handled by trap
     rm -f "$secret"
     secret=""
-fi
+  fi
 fi
 
 unset _err cmd input key keypath output secret stdin tmppath use_armor
