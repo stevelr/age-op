@@ -2,7 +2,7 @@
 
 # Age encryption using secrets in 1password vault
 # Date: 2023-05-29
-# Version: 0.2
+# Version: 0.3
 #
 # Run `age-op -h` for help and examples
 #
@@ -45,7 +45,13 @@ Examples:
 
    Encrypt file:
        $prog -e -k KEY_PATH [ -o OUTPUT ] [ -t TMPDIR ] [ FILE ]
-           encrypt a single input file FILE.
+           encrypt a single input file FILE using a private key.
+           If FILE is '-' or not specified, stdin is encrypted
+           If OUTPUT is '-' or not specified, the output is sent to stdout
+
+       $prog -r -k KEY_PATH [ -o OUTPUT ] [ -t TMPDIR ] [ FILE ]
+           encrypt a single input file FILE using a public key (as recipient).
+           Works with SSH public keys in 'authorized_keys' format.
            If FILE is '-' or not specified, stdin is encrypted
            If OUTPUT is '-' or not specified, the output is sent to stdout
 
@@ -135,17 +141,20 @@ help_regex="^\-h|^--help|^help$"
 [ ! $($OP --version) ] && _help "Missing 'op' dependency. Please see installation url below."
 [[ $1 =~ $help_regex ]] && _help
 
-while getopts ':hnedo:k:t:' OPTION; do
+while getopts ':hnredo:k:t:' OPTION; do
   case $OPTION in
     h) _help
         ;;
-    n) [ -n "$cmd" ] && _help "Only one of -e, -d, or -n may be used"
+    n) [ -n "$cmd" ] && _help "Only one of -e, -d, -r, or -n may be used"
         cmd="new"
         ;;
-    e) [ -n "$cmd" ] && _help "Only one of -e, -d, or -n may be used"
+    e) [ -n "$cmd" ] && _help "Only one of -e, -d, -r, or -n may be used"
         cmd="encrypt"
         ;;
-    d) [ -n "$cmd" ] && _help "Only one of -e, -d, or -n may be used"
+    r) [ -n "$cmd" ] && _help "Only one of -e, -d, -r, or -n may be used"
+        cmd="recipient"
+        ;;
+    d) [ -n "$cmd" ] && _help "Only one of -e, -d, -r, or -n may be used"
         cmd="decrypt"
         ;;
     o) output=$OPTARG
@@ -169,7 +178,7 @@ while getopts ':hnedo:k:t:' OPTION; do
 done
 shift "$(($OPTIND -1))"
 
-[ -z "$cmd" ] && _help "One of -e, -d, or -n must be used"
+[ -z "$cmd" ] && _help "One of -e, -d, -r, or -n must be used"
 [ -z "$keypath" ]  && _help "keypath is required. Should be of the form op://vault/title[/field]"
 
 if [ "$cmd" = "new" ]; then
@@ -185,7 +194,7 @@ else
     input="$1"
     [ ! -r "$input" ] && _help "Missing or unreadable input file '$input'"
     # don't re-encrypt file ending in .age
-    [ "$cmd" = "encrypt" ] && [[ $input =~ \.age$ ]] && _help "Input file may not end in '.age'"
+    [ "$cmd" = "encrypt" -o "$cmd" = "recipient" ] && [[ $input =~ \.age$ ]] && _help "Input file may not end in '.age'"
   fi
   if [ -z "$output" ] || [ "$output" = "-" ]; then
     output=/dev/stdout
@@ -195,6 +204,16 @@ else
   if [ $? -ne 0 ] || [ -z "$key" ]; then
     _help "Invalid keypath '$keypath'"
   fi
+  
+  if [ "$cmd" = "recipient" ]; then
+    # For recipient encryption with SSH public key, use -r flag directly
+    if [ $stdin -eq 1 ]; then
+      $AGE --encrypt -r "$key" >"$output"
+    else
+      $AGE --encrypt -r "$key" <"$input" >"$output"
+    fi
+  else
+    # For encryption with private key or decryption, store key in temporary file
   secret=$(store_secret "$tmppath" "$key")
 
   ## try
@@ -210,6 +229,7 @@ else
   {
     rm -f "$secret"
   }
+fi
 fi
 
 unset  _err cmd input key keypath output secret stdin tmppath
