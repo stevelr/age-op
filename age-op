@@ -205,10 +205,13 @@ while getopts ':hnredao:k:t:' OPTION; do
         ;;
     k) keypath=$OPTARG
         if [[ ! $keypath =~ ^op://[^/]+/[^/]+/.+$ ]]; then
-          # if path has only two segments (vault & title), append field "password"
-          # since the 'new' function creates items of type Password
+          # if path has only two segments (vault & title), append appropriate field
           if [[ $keypath =~ ^op://[^/]+/[^/]+$ ]]; then
-            keypath="$keypath/password"
+            if [ "$cmd" = "recipient" ]; then
+              keypath="$keypath/public key"
+            else
+              keypath="$keypath/password"
+            fi
           else
             _help "Invalid key path '$keypath'"
           fi
