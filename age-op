@@ -120,12 +120,10 @@ _HELP
 # params: TMPDIR KEY
 # returns: path to temp file
 store_secret() {
-  secret=$(mktemp "$1/age-secret.XXXXXX")
-  chmod 600 "$secret"
-  cat >"$secret" <<_EKEY
-$2
-_EKEY
-  echo "$secret"
+  local tmp_secret=$(mktemp "$1/age-secret.XXXXXX")
+  chmod 600 "$tmp_secret"
+  echo "$2" > "$tmp_secret"
+  echo "$tmp_secret"
 }
 
 # Create a new key
@@ -137,19 +135,30 @@ new_key() {
   ##
   ## Create new key
   ##
-  vault=$(echo $keypath | sed -E 's|op://([^/]+)\/([^/]+)\/(.*)|\1|')
-  title=$(echo $keypath | sed -E 's|op://([^/]+)\/([^/]+)\/(.*)|\2|')
-  field=$(echo $keypath | sed -E 's|op://([^/]+)\/([^/]+)\/(.*)|\3|')
+  vault=$(echo "$keypath" | sed -E 's|op://([^/]+)\/([^/]+)\/(.*)|\1|')
+  title=$(echo "$keypath" | sed -E 's|op://([^/]+)\/([^/]+)\/(.*)|\2|')
+  field=$(echo "$keypath" | sed -E 's|op://([^/]+)\/([^/]+)\/(.*)|\3|')
 
   # check if the key path exists so we don't overwrite it.
   # The successs case (key is unique) generates an error, so temporarily disable '+e'
   set +e
   key=$($OP item get "$title" "--vault=$vault" 2>/dev/null)
-  [ $? -eq 0 ] && _help "Key vault:$vault  title:$title already exists - will not overwrite"
+  if [ $? -eq 0 ]; then
+    _help "Key vault:$vault title:$title already exists - will not overwrite"
+  fi
   set -e
-  pw="$(age-keygen)"
-  out=$($OP item create --category=password --title="$title" --vault="$vault" "$field=$pw")
-  echo "Created vault:$vault  title:$title"
+  
+  pw="$(age-keygen 2>/dev/null)"
+  if [ -z "$pw" ]; then
+    _help "Failed to generate key with age-keygen"
+  fi
+  
+  $OP item create --category=password --title="$title" --vault="$vault" "$field=$pw" >/dev/null
+  if [ $? -ne 0 ]; then
+    _help "Failed to create item in 1Password"
+  fi
+  
+  echo "Created vault:$vault title:$title"
 }
 
 cmd=""
@@ -162,9 +171,16 @@ secret=""
 # putting this in a variable makes it work with zsh
 help_regex="^\-h|^--help|^help$"
 
-[ ! $($AGE --help 2>&1 |grep Usage) ] && _help "Missing 'age' dependency. Please see installation url below."
+# Check for required dependencies
+if ! command -v "$AGE" >/dev/null 2>&1; then
+  _help "Missing 'age' dependency. Please see installation url below."
+fi
+
 # 1password cli
-[ ! $($OP --version) ] && _help "Missing 'op' dependency. Please see installation url below."
+if ! command -v "$OP" >/dev/null 2>&1; then
+  _help "Missing 'op' dependency. Please see installation url below."
+fi
+
 [[ $1 =~ $help_regex ]] && _help
 
 while getopts ':hnredo:k:t:' OPTION; do
@@ -210,7 +226,7 @@ shift "$(($OPTIND -1))"
 [ -z "$keypath" ]  && _help "keypath is required. Should be of the form op://vault/title[/field]"
 
 if [ "$cmd" = "new" ]; then
-  new_key $keypath
+  new_key "$keypath"
 else
 
   ##
@@ -222,15 +238,19 @@ else
     input="$1"
     [ ! -r "$input" ] && _help "Missing or unreadable input file '$input'"
     # don't re-encrypt file ending in .age
-    [ "$cmd" = "encrypt" -o "$cmd" = "recipient" ] && [[ $input =~ \.age$ ]] && _help "Input file may not end in '.age'"
+    if [ "$cmd" = "encrypt" -o "$cmd" = "recipient" ] && [[ $input =~ \.age$ ]]; then
+      _help "Input file may not end in '.age'"
+    fi
   fi
+  
   if [ -z "$output" ] || [ "$output" = "-" ]; then
     output=/dev/stdout
   fi
 
-  key=$($OP read "$keypath")
+  # Fetch key from 1Password
+  key=$($OP read "$keypath" 2>/dev/null)
   if [ $? -ne 0 ] || [ -z "$key" ]; then
-    _help "Invalid keypath '$keypath'"
+    _help "Invalid keypath '$keypath' or unable to read key from 1Password"
   fi
   
   # Prepare age command options
@@ -241,28 +261,43 @@ else
   if [ "$cmd" = "recipient" ]; then
     # For recipient encryption with SSH public key, use -r flag directly
     if [ $stdin -eq 1 ]; then
-      $AGE --encrypt -r "$key" >"$output"
+      $AGE --encrypt -r "$key" $age_opts >"$output"
+      if [ $? -ne 0 ]; then
+        _help "Age encryption failed"
+      fi
     else
-      $AGE --encrypt -r "$key" <"$input" >"$output"
+      $AGE --encrypt -r "$key" $age_opts <"$input" >"$output"
+      if [ $? -ne 0 ]; then
+        _help "Age encryption failed"
+      fi
     fi
   else
     # For encryption with private key or decryption, store key in temporary file
   secret=$(store_secret "$tmppath" "$key")
 
-  ## try
-  {(
-    set +e # don't quit on error here - we want to make sure secret is deleted
     if [ $stdin -eq 1 ]; then
-      $AGE --${cmd} -i "$secret" >"$output"
+      $AGE --${cmd} -i "$secret" $age_opts >"$output"
+      result=$?
     else
-      $AGE --${cmd} -i "$secret" <"$input"  >"$output"
+      $AGE --${cmd} -i "$secret" $age_opts <"$input" >"$output"
+      result=$?
     fi
-  )}
-  ## catch
-  {
+    
+    # Check for age errors
+    if [ $result -ne 0 ]; then
+      rm -f "$secret"
+      secret=""
+      if [ "$cmd" = "decrypt" ]; then
+        _help "Age decryption failed. Check that you are using the correct key."
+      else
+        _help "Age encryption failed"
+      fi
+    fi
+    
+    # Cleanup is handled by trap
     rm -f "$secret"
-  }
+    secret=""
 fi
 fi
 
-unset  _err cmd input key keypath output secret stdin tmppath
+unset _err cmd input key keypath output secret stdin tmppath use_armor
