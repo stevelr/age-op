@@ -171,3 +171,23 @@ All files created or read by `age-op` are 100% compatible with `age` and `rage`,
 ## Future
 
 There may be [reasons](https://github.com/stevelr/age-op/issues/1) for building this as an age plugin, or for taking advantage of future plugins. 
+
+
+## Testing
+
+A test script is included to verify functionality:
+
+```shell
+./test-age-op.sh
+```
+
+⚠️ **Warning**: The test script creates and deletes items in a vault named `ageop_testing_scratch_vault`. Use a different vault with:
+
+```shell
+TEST_VAULT=my_test_vault ./test-age-op.sh
+```
+
+Test with rage instead of age:
+```shell
+AGE=rage ./test-age-op.sh
+```
