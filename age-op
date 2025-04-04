@@ -48,6 +48,24 @@ _help() {
 
 age encryption with secret keys in 1password vault
 
+Usage:
+   $prog -e -k KEY_PATH [ -o OUTPUT ] [ -t TMPDIR ] [ -a ] [ FILE ]
+   $prog -r -k KEY_PATH [ -o OUTPUT ] [ -t TMPDIR ] [ -a ] [ FILE ]
+   $prog -d -k KEY_PATH [ -o OUTPUT ] [ -t TMPDIR ] [ FILE ]
+   $prog -n -k KEY_PATH
+   $prog -h
+
+Options:
+   -e            Encrypt using identity (private key)
+   -r            Encrypt using recipient (public key)
+   -d            Decrypt
+   -n            Generate new key
+   -k KEY_PATH   1Password key path
+   -o OUTPUT     Output file (default: stdout)
+   -t TMPDIR     Temporary directory (default: $tmppath)
+   -a            Use ASCII armor (PEM format)
+   -h            Show help
+
 Examples:
 
    Encrypt file:
