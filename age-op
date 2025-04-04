@@ -183,7 +183,7 @@ fi
 
 [[ $1 =~ $help_regex ]] && _help
 
-while getopts ':hnredo:k:t:' OPTION; do
+while getopts ':hnredao:k:t:' OPTION; do
   case $OPTION in
     h) _help
         ;;
