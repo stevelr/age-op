@@ -14,6 +14,13 @@
 AGE=${AGE:-$(which age)}
 OP=${OP:-op}
 
+# Ensure proper cleanup of temporary files, even on unexpected exit
+cleanup() {
+  if [ -n "$secret" ] && [ -f "$secret" ]; then
+    rm -f "$secret"
+  fi
+}
+trap cleanup EXIT INT TERM
 
 # Select private folder for temporary secrets. can be overridden with `-t` flag
 # The defaults for linux and macos are readable by owner only
