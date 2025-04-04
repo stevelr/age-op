@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # Age encryption using secrets in 1password vault
-# Date: 2023-05-29
+# Date: 2025-04-04
 # Version: 0.3
 #
 # Run `age-op -h` for help and examples
