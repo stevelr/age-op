@@ -69,12 +69,12 @@ Options:
 Examples:
 
    Encrypt file:
-       $prog -e -k KEY_PATH [ -o OUTPUT ] [ -t TMPDIR ] [ FILE ]
+       $prog -e -k KEY_PATH [ -o OUTPUT ] [ -t TMPDIR ] [ -a ] [ FILE ]
            encrypt a single input file FILE using a private key.
            If FILE is '-' or not specified, stdin is encrypted
            If OUTPUT is '-' or not specified, the output is sent to stdout
 
-       $prog -r -k KEY_PATH [ -o OUTPUT ] [ -t TMPDIR ] [ FILE ]
+       $prog -r -k KEY_PATH [ -o OUTPUT ] [ -t TMPDIR ] [ -a ] [ FILE ]
            encrypt a single input file FILE using a public key (as recipient).
            Works with SSH public keys in 'authorized_keys' format.
            If FILE is '-' or not specified, stdin is encrypted
@@ -157,7 +157,8 @@ input=""
 output=""
 keypath=""
 stdin=0
-_err=""
+use_armor=""
+secret=""
 # putting this in a variable makes it work with zsh
 help_regex="^\-h|^--help|^help$"
 
@@ -181,6 +182,8 @@ while getopts ':hnredo:k:t:' OPTION; do
         ;;
     d) [ -n "$cmd" ] && _help "Only one of -e, -d, -r, or -n may be used"
         cmd="decrypt"
+        ;;
+    a) use_armor="--armor"
         ;;
     o) output=$OPTARG
         ;;
@@ -230,6 +233,11 @@ else
     _help "Invalid keypath '$keypath'"
   fi
   
+  # Prepare age command options
+  age_opts=""
+  [ -n "$use_armor" ] && age_opts="$age_opts $use_armor"
+  
+  # Execute appropriate age command based on the operation
   if [ "$cmd" = "recipient" ]; then
     # For recipient encryption with SSH public key, use -r flag directly
     if [ $stdin -eq 1 ]; then
