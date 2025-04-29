@@ -24,19 +24,25 @@ age-op [ -h | --help ]
 
 ### Encrypt 
 
-Encrypt a file
+Encrypt a file using an identity (private key):
 
 ```shell
-age-op -e -k KEY_PATH [ -o OUTPUT ] [ -t TMPDIR ] [ FILE ]
+age-op -e -k KEY_PATH [ -o OUTPUT ] [ -t TMPDIR ] [ -a ] [ FILE ]
+```
+
+Encrypt a file using a recipient (public key) - useful for SSH public keys:
+
+```shell
+age-op -r -k KEY_PATH [ -o OUTPUT ] [ -t TMPDIR ] [ -a ] [ FILE ]
 ```
   
-Encrypt multiple files and folders.
+Encrypt multiple files and folders:
 
 ```shell
 tar czf - FILE_OR_DIR [ FILE_OR_DIR ... ] | age-op -e -k KEY_PATH -o foo.tar.gz.age
 ```
 
-Encrypt database backup
+Encrypt database backup:
 
 ```shell
 pg_dump | age-op -e -k KEY_PATH -o db-snapshot-$(date '+%Y%m%d-%H%M%S').age 
@@ -44,13 +50,13 @@ pg_dump | age-op -e -k KEY_PATH -o db-snapshot-$(date '+%Y%m%d-%H%M%S').age
 
 ### Decrypt
 
-Decrypt a file
+Decrypt a file:
 
 ```shell
 age-op -d -k KEY_PATH [ -o OUTPUT ] [-t TMPDIR ] [ FILE ]
 ```
   
-Decrypt files and folders.
+Decrypt files and folders:
 
 ```shell
 age-op -d -k KEY_PATH foo.tar.gz.age | tar xzf -
@@ -68,10 +74,16 @@ age-op -n -k KEY_PATH
 
 |             | description                                                                                                                                                                                                                                                              |
 |:------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| -e          | Encrypt using identity (private key)                                                                                                                                                                                                                                     |
+| -r          | Encrypt using recipient (public key) - works with SSH public keys                                                                                                                                                                                                        |
+| -d          | Decrypt file using identity key                                                                                                                                                                                                                                          |
+| -n          | Generate new identity key                                                                                                                                                                                                                                                |
+| -a          | Use ASCII armor (PEM format) for encryption output                                                                                                                                                                                                                       |
 | -k KEY_PATH | (required) path to key in a 1Password vault, in one of the following formats:<br/>`op://vault/title`<br/>`op://vault/title/field`<br/>`op://vault/title/section/field`<br/>The first variant can be used when the field name is `password`.                              |
 | -o OUTPUT   | path to output file. If `-` or if not specified, stdout is used                                                                                                                                                                                                          |
 | -t TMPDIR   | TMPDIR is a private folder where keys are briefly stored so they can be read by `age`, then quickly removed.<br/>On linux, the default is `/run/user/USERID`. On macos, the default is `$TMPDIR`. Both of these folders are usually owned by current user with mode 700. |
 | FILE        | path to input file. If `-` or if not specified, stdin is used.                                                                                                                                                                                                           |
+| -h          | Show help and usage information                                                                                                                                                                                                                                          |
 
 
 ## 1Password access: local and remote
@@ -159,3 +171,23 @@ All files created or read by `age-op` are 100% compatible with `age` and `rage`,
 ## Future
 
 There may be [reasons](https://github.com/stevelr/age-op/issues/1) for building this as an age plugin, or for taking advantage of future plugins. 
+
+
+## Testing
+
+A test script is included to verify functionality:
+
+```shell
+./test-age-op.sh
+```
+
+⚠️ **Warning**: The test script creates and deletes items in a vault named `ageop_testing_scratch_vault`. Use a different vault with:
+
+```shell
+TEST_VAULT=my_test_vault ./test-age-op.sh
+```
+
+Test with rage instead of age:
+```shell
+AGE=rage ./test-age-op.sh
+```
